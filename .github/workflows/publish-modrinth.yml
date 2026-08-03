@@ -29,19 +29,34 @@ jobs:
           ZIP_NAME: ${{ steps.package.outputs.zip_name }}
           VERSION: ${{ steps.package.outputs.version }}
         run: |
-          CHANGELOG=$(cat CHANGELOG.md | head -c 4000)
+          # Build JSON metadata safely using python to avoid shell/JSON escaping issues
+          python3 - <<'EOF'
+          import json, os
+
+          changelog = open("CHANGELOG.md").read()[:4000]
+          version = os.environ["VERSION"]
+
+          metadata = {
+            "project_id": "refract-shaders",
+            "name": f"Refract Shaders {version}",
+            "version_number": version,
+            "changelog": changelog,
+            "version_type": "release",
+            "loaders": ["iris", "optifine"],
+            "game_versions": [
+              "1.16.5","1.17.1","1.18.2","1.19.4",
+              "1.20.1","1.20.2","1.20.4","1.20.6",
+              "1.21","1.21.1"
+            ],
+            "featured": True,
+            "file_parts": ["file"]
+          }
+
+          with open("modrinth_metadata.json", "w") as f:
+            json.dump(metadata, f)
+          EOF
 
           curl --fail -X POST "https://api.modrinth.com/v2/version" \
             -H "Authorization: ${MODRINTH_TOKEN}" \
-            -F "data={
-              \"project_id\": \"refract-shaders\",
-              \"name\": \"Refract Shaders ${VERSION}\",
-              \"version_number\": \"${VERSION}\",
-              \"changelog\": $(echo "${CHANGELOG}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
-              \"version_type\": \"release\",
-              \"loaders\": [\"iris\", \"optifine\"],
-              \"game_versions\": [\"1.16.5\",\"1.17.1\",\"1.18.2\",\"1.19.4\",\"1.20.1\",\"1.20.2\",\"1.20.4\",\"1.20.6\",\"1.21\",\"1.21.1\"],
-              \"featured\": true,
-              \"file_parts\": [\"file\"]
-            };type=application/json" \
+            -F "data=@modrinth_metadata.json;type=application/json" \
             -F "file=@${ZIP_NAME};type=application/zip"

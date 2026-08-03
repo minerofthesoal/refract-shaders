@@ -21,27 +21,27 @@ jobs:
           ZIP_NAME="refract-shaders-${VERSION}.zip"
           zip -r "${ZIP_NAME}" shaders CHANGELOG.md
           echo "zip_name=${ZIP_NAME}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Publish to Modrinth
-        uses: Modrinth/minotaur@v1
-        with:
-          token: ${{ secrets.MODRINTH_TOKEN }}
-          project_id: refract-shaders
-          version_number: ${{ github.ref_name }}
-          version_title: "Refract Shaders ${{ github.ref_name }}"
-          version_type: release
-          loaders: |
-            iris
-            optifine
-          game_versions: |
-            1.16.5
-            1.17.1
-            1.18.2
-            1.19.4
-            1.20.1
-            1.20.2
-            1.20.4
-            1.20.6
-            1.21
-            1.21.1
-          files: ${{ steps.package.outputs.zip_name }}
+      - name: Publish to Modrinth via API
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          ZIP_NAME: ${{ steps.package.outputs.zip_name }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          CHANGELOG=$(cat CHANGELOG.md | head -c 4000)
+
+          curl --fail -X POST "https://api.modrinth.com/v2/version" \
+            -H "Authorization: ${MODRINTH_TOKEN}" \
+            -F "data={
+              \"project_id\": \"refract-shaders\",
+              \"name\": \"Refract Shaders ${VERSION}\",
+              \"version_number\": \"${VERSION}\",
+              \"changelog\": $(echo "${CHANGELOG}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+              \"version_type\": \"release\",
+              \"loaders\": [\"iris\", \"optifine\"],
+              \"game_versions\": [\"1.16.5\",\"1.17.1\",\"1.18.2\",\"1.19.4\",\"1.20.1\",\"1.20.2\",\"1.20.4\",\"1.20.6\",\"1.21\",\"1.21.1\"],
+              \"featured\": true,
+              \"file_parts\": [\"file\"]
+            };type=application/json" \
+            -F "file=@${ZIP_NAME};type=application/zip"

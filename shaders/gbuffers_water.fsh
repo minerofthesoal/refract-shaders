@@ -469,15 +469,13 @@ void main() {
         float sparkleMask = smoothstep(0.55, 0.99, specDot);
         float sparkle = waterSparkle(worldXZ, frameTimeCounter) * sparkleMask;
 
-        // BUGFIX: sunColor at night is not zero (moon gives vec3(0.05,0.07,0.13)),
-        // so specular glint and sparkle on water were visibly bright at night,
-        // especially near water edges where the bloom pass then made them glow.
-        // Gate glint/sparkle by getSunVisibility() so they correctly fade to near-
-        // zero at night, matching the visual expectation that water sparkles are
-        // a sun-only effect (the moon highlight is subtle and picked up by `direct`).
-        float glintDay = getSunVisibility();
-        color += sunColor * (specCore * 1.3 + specSoft) * shadow * WATER_GLINT_STRENGTH * glintDay;
-        color += sunColor * sparkle * 1.3 * shadow * WATER_GLINT_STRENGTH * glintDay;
+        // WATER_GLINT_STRENGTH defaults below 1.0: at full strength the
+        // tight specular core plus bloom's mip-chain blur combine into
+        // one big soft white blob covering a wide patch of water rather
+        // than a crisp glinting highlight - tuning this down keeps the
+        // core tight while still leaving the option to bring it back up.
+        color += sunColor * (specCore * 1.3 + specSoft) * shadow * WATER_GLINT_STRENGTH;
+        color += sunColor * sparkle * 1.3 * shadow * WATER_GLINT_STRENGTH;
 
         // Dancing seabed caustics: a net-like pattern of light brightest
         // in shallow, sunlit water, fading out with depth (light has
@@ -486,15 +484,10 @@ void main() {
         // reaching this patch at all).
         float caustics = causticPattern(worldXZ, frameTimeCounter);
         caustics *= shadow * (1.0 - clamp(depthFactor * 1.8, 0.0, 1.0));
-        color += sunColor * caustics * CAUSTICS_STRENGTH * 0.5 * glintDay;
+        color += sunColor * caustics * CAUSTICS_STRENGTH * 0.5;
     } else if (isWater > 0.5) {
         vec3 wallTint = mix(vec3(0.09, 0.30, 0.36), vColor.rgb * 0.4, 0.65);
-        // BUGFIX: multiplying by 3.0 here amplified whatever ambient light reached
-        // the water walls by 3x, which at night meant faint moon-ambient became
-        // visible bright-teal glowing edges at the water surface boundary.
-        // Scale the amplifier by day factor so walls are subtly dark at night.
-        float wallBrightness = mix(1.2, 2.0, getDayFactor());
-        color = mix(color * wallTint * wallBrightness, color, 0.35);
+        color = mix(color * wallTint * 3.0, color, 0.35);
         outAlpha = clamp(outAlpha + 0.25, 0.0, 0.82);
     } else {
         // Glass (clear or stained) - previously just flat lit albedo

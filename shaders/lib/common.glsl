@@ -771,26 +771,15 @@ float sampleShadowPCF(sampler2D shadowtex, vec3 shadowClipPos, float bias) {
 
 #if SOFT_SHADOWS == 1
     float texel = 1.0 / float(SHADOW_RES);
-    // Rotate the whole disc per-pixel (cheap hash-based angle) so the
-    // fixed 16-tap pattern doesn't itself read as a repeating texture
-    // of shadow edges across flat, evenly-lit ground.
     float angle = hash12(shadowClipPos.xy * float(SHADOW_RES)) * 6.28318530718;
     float ca = cos(angle), sa = sin(angle);
     mat2 rot = mat2(ca, -sa, sa, ca);
 
-    // --- Blocker search (contact hardening) -------------------------
-    // A flat-radius PCF blur makes every shadow edge equally soft,
-    // whether it's a foot touching the ground (should be a crisp
-    // near-hard line) or a tree canopy's shadow forty blocks away
-    // (should be a wide, diffuse penumbra). Sampling a wider ring
-    // first to find the AVERAGE depth of whatever's actually occluding
-    // this point, then scaling the real PCF kernel by how far past
-    // that blocker the receiver sits, gets both right with one
-    // technique instead of picking a single compromise radius.
+    // Blocker search (PCSS contact hardening)
     float blockerSum = 0.0;
     float blockerCount = 0.0;
     for (int i = 0; i < 16; i++) {
-        vec2 offset = (rot * POISSON_DISC[i]) * texel * 3.0;
+        vec2 offset = (rot * POISSON_DISC[i]) * texel * 3.2;
         float d = texture2D(shadowtex, shadowClipPos.xy + offset).r;
         if (d < shadowClipPos.z - bias) {
             blockerSum += d;
@@ -802,12 +791,12 @@ float sampleShadowPCF(sampler2D shadowtex, vec3 shadowClipPos, float bias) {
     if (blockerCount > 0.5) {
         float avgBlocker = blockerSum / blockerCount;
         float penumbraRatio = (shadowClipPos.z - avgBlocker) / max(avgBlocker, 0.0005);
-        penumbraScale = clamp(1.0 + penumbraRatio * 60.0 * SHADOW_SOFTNESS, 1.0, 5.0);
+        penumbraScale = clamp(1.0 + penumbraRatio * 85.0 * SHADOW_SOFTNESS, 1.0, 6.0);
     }
 
     float shadow = 0.0;
     for (int i = 0; i < 16; i++) {
-        vec2 offset = (rot * POISSON_DISC[i]) * texel * 1.6 * penumbraScale;
+        vec2 offset = (rot * POISSON_DISC[i]) * texel * 1.5 * penumbraScale;
         float depthSample = texture2D(shadowtex, shadowClipPos.xy + offset).r;
         shadow += (shadowClipPos.z - bias <= depthSample) ? 1.0 : 0.0;
     }
@@ -822,20 +811,7 @@ float sampleShadowPCF(sampler2D shadowtex, vec3 shadowClipPos) {
     return sampleShadowPCF(shadowtex, shadowClipPos, 0.0022);
 }
 
-// Soft-filtered colored-shadow tint lookup. The original approach took
-// one unfiltered texel from shadowcolor0, which faithfully reproduces
-// the shadow map's own texel grid AND the caster mesh's triangle edges
-// at that resolution - in practice a stained-glass window overhead
-// showed up as a hard-edged, blocky/triangular patch of color on the
-// surface below rather than a soft tinted glow, most visible on flat
-// ceilings/floors directly under a window. A small box blur over
-// shadowcolor0 (same texel size as the depth PCF above, scaled by the
-// same SHADOW_SOFTNESS setting) smooths that into a soft-edged patch -
-// the same fix in spirit as sampleShadowPCF's own move from a single
-// tap to a filtered kernel. Takes the sampler as a parameter (like
-// sampleShadowPCF above) rather than assuming a global `shadowcolor0`,
-// since not every program that includes this file declares that
-// uniform.
+// Soft-filtered colored-shadow tint lookup.
 vec4 sampleShadowTintPCF(sampler2D shadowcolorSampler, vec2 shadowUV) {
     if (shadowUV.x < 0.0 || shadowUV.x > 1.0 || shadowUV.y < 0.0 || shadowUV.y > 1.0) {
         return vec4(0.0);
@@ -849,16 +825,6 @@ vec4 sampleShadowTintPCF(sampler2D shadowcolorSampler, vec2 shadowUV) {
     return sum * 0.25;
 }
 
-// Wide-radius sample of the same colored-shadow buffer, used to let a
-// bit of a stained-glass window's tint bleed onto surfaces just outside
-// its own sharp shadow silhouette - a wall or floor tile a couple of
-// blocks to the side of a window, which sampleShadowTintPCF's tight
-// radius above would never catch since there's no caster directly
-// overhead there at all. Real light through a window scatters somewhat
-// beyond a razor-sharp edge rather than stopping dead at it; this is a
-// stylized stand-in for that, not a physically-simulated bounce. See
-// the call sites in gbuffers_terrain.fsh / gbuffers_water.fsh /
-// gbuffers_entities.fsh for how it combines with the tight sample.
 vec4 sampleShadowTintBleed(sampler2D shadowcolorSampler, vec2 shadowUV) {
     if (shadowUV.x < 0.0 || shadowUV.x > 1.0 || shadowUV.y < 0.0 || shadowUV.y > 1.0) {
         return vec4(0.0);
@@ -872,23 +838,10 @@ vec4 sampleShadowTintBleed(sampler2D shadowcolorSampler, vec2 shadowUV) {
     return sum * 0.25;
 }
 
-// Slope-scaled shadow bias: grazing-angle surfaces (low NdotL) need a
-// bigger depth bias to avoid self-shadowing acne, but a bias that big
-// on a directly-lit flat surface visibly detaches the shadow from its
-// caster ("peter-panning"). Scaling bias by how oblique the surface is
-// to the light gets both right instead of picking one fixed compromise.
 float slopeScaledBias(float NdotL) {
-    return mix(0.0055, 0.0016, clamp(NdotL, 0.0, 1.0));
+    return mix(0.0050, 0.0015, clamp(NdotL, 0.0, 1.0));
 }
 
-// Softly fades shadow strength back to fully-lit as a surface
-// approaches the outer edge of the shadow map's draw distance, instead
-// of the hard pop straight from "shadowed" to "lit" that otherwise
-// happens the instant a fragment's shadow-clip position steps outside
-// [0,1] (sampleShadowPCF's own out-of-bounds check returns a flat 1.0
-// with no transition at all - correct at the boundary, but with
-// nothing easing into it). Only needs horizontal distance, since
-// SHADOW_DISTANCE itself is a horizontal draw-distance figure.
 float shadowDistanceFadeFactor(vec3 cameraRelativeWorldPos) {
     float dist = length(cameraRelativeWorldPos.xz);
     return smoothstep(SHADOW_DISTANCE * 0.75, SHADOW_DISTANCE * 0.98, dist);
@@ -907,41 +860,12 @@ vec3 commonReconstructViewPos(vec2 uv, float depth, mat4 projInv) {
     return viewPos.xyz / viewPos.w;
 }
 
-// Screen-space "sun-only" contact shadow (SHADOW_MODE 1/2): marches a
-// short ray from the fragment toward the sun/moon through view space,
-// projecting each step back to screen space and testing it against the
-// opaque depth buffer. This is a real per-pixel ray march against scene
-// depth - the same technique some other packs market as "raytraced
-// shadows" - deliberately kept SHORT range, since a screen-space ray can
-// only ever see what's already on screen; it can't reach off past the
-// edge of frame or behind the camera the way a true scene raytrace
-// could. It's meant to layer extra close-range contact detail (corners,
-// thin objects, block edges the shadow map's finite texel resolution
-// blurs away) on top of the existing shadow map, not replace it.
-// Returns 1.0 = fully lit along this short ray, 0.0 = occluded.
-//
-// BUGFIX: this used to return a hard, undithered 0.0/1.0 - every pixel
-// tested the exact same fixed step positions along its own ray, so
-// whether a given pixel's ray happened to clip a nearby edge (a cactus,
-// a dug-out block corner, any small close occluder) was basically
-// deterministic per-pixel. The occluded region's silhouette came out as
-// a crisp, faceted polygon - a solid-looking geometric shape sitting on
-// the ground - instead of blending into the shadow map's soft penumbra.
-// Dithering the ray's starting phase per-pixel (same ordered 4x4 bayer
-// pattern already used for SSAO's sample rotation and shadow PCF
-// elsewhere in this pack) means neighboring pixels test slightly
-// different points along the ray, breaking that hard edge into a fine
-// dither the eye reads as a soft boundary instead of a solid cutout.
+// Screen-space sun contact shadow: crisp at contact, smooth fade over distance.
 float screenSpaceSunShadow(sampler2D depthtex, mat4 projInv, vec3 viewPos, vec3 viewNormalDir, int steps, float range, vec2 screenCoord) {
     vec3 sunDirView = normalize(shadowLightPosition);
-    // Small normal offset so the ray doesn't immediately self-intersect
-    // the very surface it's marching away from.
-    vec3 rayPos = viewPos + viewNormalDir * 0.04;
+    vec3 rayPos = viewPos + viewNormalDir * 0.035;
     float stepSize = range / float(steps);
 
-    // Dither the starting phase by up to one full step, so the set of
-    // depths actually sampled shifts continuously from pixel to pixel
-    // instead of every pixel marching the identical fixed ladder.
     rayPos += sunDirView * (bayer4(screenCoord) * stepSize);
 
     for (int i = 0; i < steps; i++) {
@@ -953,12 +877,15 @@ float screenSpaceSunShadow(sampler2D depthtex, mat4 projInv, vec3 viewPos, vec3 
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
 
         float sceneDepthRaw = texture2D(depthtex, uv).r;
-        if (sceneDepthRaw >= 0.9999) continue; // sky pixel, nothing to occlude against
+        if (sceneDepthRaw >= 0.9999) continue;
 
         vec3 sceneViewPos = commonReconstructViewPos(uv, sceneDepthRaw, projInv);
-        // Same "ray has reached/passed the real surface" hit test used
-        // by the water/glass SSR trace elsewhere in this pack.
-        if (rayPos.z <= sceneViewPos.z + 0.1) return 0.0;
+        float diff = sceneViewPos.z - rayPos.z;
+        // Check for intersection within depth thickness threshold
+        if (diff >= -0.05 && diff < 0.35) {
+            float distFrac = float(i) / float(steps);
+            return mix(0.0, 0.45, distFrac); // crisp contact shadow that softens over march distance
+        }
     }
     return 1.0;
 }

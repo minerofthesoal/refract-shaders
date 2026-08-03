@@ -68,5 +68,5 @@ void main() {
     float dither = (bayer4(gl_FragCoord.xy) - 0.5) / 255.0;
     color += dither;
 
-    gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+    gl_FragData[0] = vec4(clamp(color, 0.0, 1.0), 1.0);
 }

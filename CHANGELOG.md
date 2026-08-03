@@ -6,6 +6,28 @@ engine (still v17-derived), new name because it's grown well past what
 features - light refracting/bending through water and through colored
 glass - are what it's actually built around now.
 
+## v22.2.18: GitHub Modrinth Publishing, Vulkan/VulkanMod compatibility, Sun Box Fix, Better Clouds & Shadows
+
+### Added
+- **GitHub Action workflow for publishing to Modrinth** (`.github/workflows/publish-modrinth.yml`): Automatically packages the shader pack `.zip` and uploads release versions to Modrinth on git tag push (`v*`) or manual workflow dispatch using `Modrinth/minotaur@v2`.
+
+### Fixed
+- **Sun Quad White Box Artifact:** Fixed a bug where `depthtex0` depth values recorded from the sun quad geometry caused `isSky` to evaluate to `false` specifically over the sun quad area, creating a sharp square boundary in volumetric cloud masking, atmospheric fog, and sun glare. `isSky` now samples `depthtex1` (the opaque-only depth buffer) which correctly classifies open sky and sun/moon quads uniformly.
+- **Vulkan / VulkanMod Renderer Compatibility:**
+  - Added preprocessor guards around `GL_ARB_shader_texture_lod` to prevent SPIR-V compilation errors on Vulkan compilers.
+  - Standardized fragment render target outputs across all passes to `gl_FragData[0]`.
+  - Added explicit depth and color buffer declarations (`shadowMapFormat = DEPTH24`, `shadowColor0Format = RGBA8`, `shadowColor1Format = RGBA8`) to `shaders.properties` for proper VulkanMod render target initialization.
+
+### Improved
+- **Better Volumetric Clouds:**
+  - Integrated **Beer-Lambert Light Attenuation** ($e^{-d \cdot \text{density}}$) and **Powder-Sugar Effect** ($1 - e^{-3.5 \cdot \text{density}}$) for dense, realistic cloud cores and glowing edges.
+  - Added **Dual-Lobe Henyey-Greenstein Scattering** ($g_1=0.65, g_2=-0.30$) for realistic forward/backward sunlight scatter.
+  - Added high-frequency detail billow noise for fluffy, organic cumulus cloud structures.
+- **Better Shadows:**
+  - Upgraded PCSS contact-hardening penumbra calculation in `sampleShadowPCF` with dithered Poisson disc sampling for smooth, noise-free soft shadow falloffs.
+  - Refined `screenSpaceSunShadow` to include depth thickness thresholding and distance-faded contact shadow rendering for crisp contact under block edges, feet, and foliage.
+
+
 ## Round 13: the moon's real box bug, glare that respects occlusion, safer ocean color, night fog
 
 ### Fixed

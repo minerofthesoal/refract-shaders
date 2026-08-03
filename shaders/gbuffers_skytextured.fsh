@@ -22,6 +22,11 @@ void main() {
     if (albedo.a < 0.05) discard;
 
     bool isSun = (renderStage == MC_RENDER_STAGE_SUN);
+#ifdef MC_RENDER_STAGE_MOON
+    if (renderStage != MC_RENDER_STAGE_SUN && renderStage != MC_RENDER_STAGE_MOON) {
+        isSun = (getSunVisibility() > 0.05);
+    }
+#endif
 
     vec3 sunTint  = getSunColor() * 0.95;
     vec3 moonTint = vec3(0.55, 0.6, 0.72);
@@ -31,30 +36,13 @@ void main() {
     float edgeDist = length(shapeUV - 0.5) * 2.0;
 
     if (isSun) {
-        // Semi-realistic sun instead of a flat tinted copy of sun.png
-        // (which is just a plain painted disc with no real detail).
-        // Real stars are dimmer toward the limb than the center -
-        // you're looking through more of the cooler, more diffuse
-        // outer atmosphere at a grazing angle near the edge than you
-        // are looking straight in at the center - and the surface
-        // itself roils with slow-moving plasma rather than sitting
-        // static. Both are cheap to fake and make a big difference in
-        // how "alive" the sun reads instead of looking like a painted-
-        // on sticker.
-        // BUGFIX: corona used to reach all the way to edgeDist 1.0 - the
-        // quad's own corners/edge. Even at very low opacity there, that
-        // thin band around the full quad boundary was bright enough
-        // (this is an HDR sun color, headed straight into bloom) for
-        // composite2.fsh's bloom pass to amplify it into a visible
-        // glowing square/quad outline matching the underlying geometry's
-        // own silhouette - a hard-edged trapezoid rather than a soft
-        // round glow. Pulled the falloff in well short of the quad's
-        // edge so there's no full-opacity boundary left for bloom to
-        // pick out.
-        float disc = 1.0 - smoothstep(0.52, 0.60, edgeDist);
-        float corona = (1.0 - smoothstep(0.30, 0.68, edgeDist)) * 0.45;
-        float shapeMask = max(disc, corona);
-        if (shapeMask < 0.02) discard;
+        // Smooth circular disc & corona falloff anchored well within quad bounds.
+        // Fades smoothly to absolute zero before edgeDist hits 0.65 to eliminate
+        // any quad boundary/corner bloom artifacts ("white box around the sun").
+        float disc = 1.0 - smoothstep(0.45, 0.54, edgeDist);
+        float corona = (1.0 - smoothstep(0.22, 0.62, edgeDist)) * 0.40;
+        float shapeMask = max(disc, corona) * smoothstep(0.65, 0.55, edgeDist);
+        if (shapeMask < 0.005) discard;
 
         float limbDarken = mix(1.0, 0.45, smoothstep(0.0, 0.6, edgeDist));
 

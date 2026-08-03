@@ -305,32 +305,19 @@ vec3 computeSunGlare(vec2 uv, bool isSky) {
 // sun, which would be far too expensive per-pixel here, but density-
 // weighted forward scattering still gives clouds visible bright/dark
 // sides relative to the light direction).
+// Real raymarched volumetric clouds: intersects the view ray with a
+// horizontal slab of world space, steps through it accumulating density
+// from 3D fbm noise with Beer-Lambert attenuation and Powder-Sugar lighting.
 vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
     if (!isSky) return baseColor;
 
-    // Smooth fade instead of a hard on/off cutoff: a hard `if (rayDir.y
-    // < threshold) return` pops clouds in and out visibly as the camera
-    // pitch crosses that exact angle - a real, reproducible artifact
-    // whenever looking near-level. Fading removes the pop entirely.
     float horizonFade = smoothstep(0.0, 0.09, rayDir.y);
     if (horizonFade <= 0.001) return baseColor;
 
-    // Cloud layer is now over twice as thick as before (was a flat
-    // 40-block slab) - real cumulus-style clouds need vertical room to
-    // actually look voluminous instead of a hazy flat sheet with soft
-    // edges. The extra thickness only pays off combined with the
-    // height-shaped density below - a taller layer with uniform
-    // density just looks like a thicker flat sheet.
     const float cloudBase = 165.0;
     const float cloudTop  = 250.0;
     float camY = cameraPosition.y;
 
-    // Guard against division by a near-zero rayDir.y: even above the
-    // fade threshold, a ray just barely above it produces enormous tNear
-    // values (huge height difference / tiny angle), which both wastes
-    // the whole march on a slice far outside the visible dome and can
-    // shimmer frame-to-frame as the angle changes slightly. Clamping
-    // keeps the march anchored to a sane, stable distance range.
     float safeRayY = max(rayDir.y, 0.02);
     float tBase = (cloudBase - camY) / safeRayY;
     float tTop  = (cloudTop  - camY) / safeRayY;
@@ -340,12 +327,6 @@ vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
     if (tFar <= tNear) return baseColor;
     tFar = min(tFar, tNear + 900.0);
 
-    // Smooth fade instead of a hard clamp: as the unclamped tNear
-    // approaches (or exceeds) the clamp ceiling, fade contribution to
-    // zero rather than pinning many different rays to the exact same
-    // distance, which previously produced a visible flat "wall" of
-    // cloud density - a hard-edged geometric shape cutting across the
-    // sky wherever that distance intersected the view frustum.
     float distanceFade = 1.0 - smoothstep(2200.0, 4000.0, tNearRaw);
     if (distanceFade <= 0.001) return baseColor;
 
@@ -358,15 +339,6 @@ vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
     vec3 wind = vec3(frameTimeCounter * 0.9, 0.0, frameTimeCounter * 0.5);
     vec3 lightDir = normalize(shadowLightPosition);
 
-    // Large-scale, slowly-drifting regional coverage bias sampled once
-    // per ray rather than per march step (it's a big, slow-moving
-    // feature - resampling it every step would be wasted cost for no
-    // visible difference). Shifts the effective coverage threshold up
-    // or down across the sky so clouds clump into denser clusters with
-    // clearer gaps between them instead of one uniform, evenly-spread
-    // ceiling - clustering reads as real volume far more convincingly
-    // than uniform density does, since it gives the eye separate cloud
-    // masses with their own shape rather than one continuous layer.
     vec3 regionSamplePos = rayDir * tNear;
     vec2 regionCoord = (regionSamplePos.xz + cameraPosition.xz + wind.xz) * 0.0011;
     float regionNoise = cloudFBM(vec3(regionCoord, 0.35));
@@ -378,27 +350,15 @@ vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
 
     for (int i = 0; i < steps; i++) {
         vec3 samplePos = rayDir * t;
-        // The extra vertical drift term (independent of the horizontal
-        // wind translation above) samples a slowly-shifting slice of
-        // the noise field over time rather than just sliding the same
-        // fixed pattern sideways - this is what actually reads as
-        // clouds billowing/evolving rather than a static shape drifting
-        // past at constant speed.
         vec3 cloudCoord = (samplePos + cameraPosition + wind + vec3(0.0, frameTimeCounter * 0.15, 0.0)) * 0.0055;
         float n = cloudFBM(cloudCoord);
 
+        // High-frequency detail billows for fluffier cumulus cloud tops/edges
+        float detail = perlinNoise3D(cloudCoord * 3.5 + vec3(frameTimeCounter * 0.05));
+        n = mix(n, n * (0.8 + 0.4 * detail), 0.35);
+
         float heightFrac = clamp((camY + samplePos.y - cloudBase) / (cloudTop - cloudBase), 0.0, 1.0);
-
-        // Sharper base, fluffier gradual top - real cumulus clouds have
-        // a comparatively flat, well-defined base (the condensation
-        // altitude) and a soft, irregular, billowing top, rather than
-        // symmetric fades at both ends.
         float heightGradient = smoothstep(0.0, 0.12, heightFrac) * smoothstep(1.0, 0.5, heightFrac);
-
-        // Coverage threshold rises with height, so the upper part of
-        // the layer needs progressively denser noise to still count as
-        // cloud - this is what actually carves out eroded, uneven tops
-        // instead of every altitude fading identically.
         float heightErosion = mix(0.0, 0.26, smoothstep(0.25, 1.0, heightFrac));
 
         float coverage = smoothstep(
@@ -407,8 +367,14 @@ vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
             n
         ) * heightGradient;
 
-        density += coverage * (1.0 - density);
-        lightAccum += coverage * max(dot(rayDir, lightDir), 0.0);
+        // Beer-Lambert attenuation + Powder Sugar Effect for volumetric depth & glowing edges
+        float sampleDensity = coverage * stepLen * 0.04;
+        density += sampleDensity * (1.0 - density);
+        
+        float cosTheta = dot(rayDir, lightDir);
+        float dualLobePhase = phaseHG(cosTheta, 0.65) * 0.75 + phaseHG(cosTheta, -0.30) * 0.25;
+        float powderEffect = 1.0 - exp(-sampleDensity * 3.5);
+        lightAccum += coverage * dualLobePhase * powderEffect;
         weightSum += coverage;
 
         t += stepLen;
@@ -417,40 +383,17 @@ vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
     density = clamp(density, 0.0, CLOUD_OPACITY);
     if (density < 0.01) return baseColor;
 
-    float forwardScatter = weightSum > 0.0 ? clamp(lightAccum / weightSum, 0.0, 1.0) : 0.0;
-    vec3 sunLit = getSunColor() * (0.55 + 0.9 * forwardScatter);
-    vec3 cloudColor = mix(getAmbientSkyColor() * 1.15, sunLit, 0.6);
+    float forwardScatter = weightSum > 0.0 ? clamp(lightAccum / weightSum * 4.0 * PI, 0.0, 1.0) : 0.0;
+    float beerAttenuation = exp(-density * 1.8);
+    vec3 sunLit = getSunColor() * (0.45 + 1.25 * forwardScatter) * mix(0.35, 1.0, beerAttenuation);
+    vec3 cloudColor = mix(getAmbientSkyColor() * 1.15, sunLit, 0.65);
     cloudColor *= mix(1.0, 0.4, rainStrength);
 
-    // BUGFIX/feature: clouds used to scale toward near-zero brightness at
-    // night ((0.12 + 0.65*day + 0.25*sunVisibility) bottoms out at 0.12
-    // with both terms at 0), which read as clouds all but disappearing
-    // after dusk rather than a real moonlit sky, where clouds are often
-    // one of the most visually striking things overhead - silver-edged,
-    // clearly shaped against the stars instead of just a faint gray haze.
-    // Adds a moonlit rim/sheen term independent of the flat day/night
-    // brightness scalar: strongest where the cloud's own forward-
-    // scatter term (its "sunlit/moonlit" side, reusing the exact same
-    // lightAccum this function already tracks toward the sun/moon
-    // direction - shadowLightPosition already points at whichever one is
-    // up) is high and the base density is in the thin, edge-of-cloud
-    // range rather than a dense core, so it reads as a bright silver rim
-    // on cloud edges the way real moonlit clouds do.
     float nightFactor = 1.0 - getDayFactor();
     float edgeRim = (1.0 - smoothstep(0.0, 0.6, density)) * forwardScatter;
     vec3 moonSheen = vec3(0.65, 0.72, 0.85) * edgeRim * nightFactor * NIGHT_CLOUD_GLOW * 0.8;
     cloudColor += moonSheen;
 
-    // NEW: the same edge-rim technique as the moonlit sheen above,
-    // reused for sunrise/sunset - real golden-hour clouds catch a
-    // dramatic warm rim light along their sun-facing edges well beyond
-    // what the flat sunLit/ambient mix above captures on its own,
-    // which is what actually reads as clouds "reacting" to the sun
-    // crossing the horizon rather than just slowly recoloring in step
-    // with the sky. Uses the sun's own real color (already warm/HDR at
-    // dusk via getSunColor) rather than a fixed tint, so it stays
-    // correct across the whole sunrise/sunset gradient instead of one
-    // fixed "dusk color".
     float duskFactor = clamp(1.0 - abs(getSunVisibility() - 0.45) * 2.6, 0.0, 1.0);
     vec3 duskRim = getSunColor() * edgeRim * duskFactor * NIGHT_CLOUD_GLOW * 0.6;
     cloudColor += duskRim;
@@ -462,15 +405,8 @@ vec3 computeVolumetricClouds(vec3 rayDir, vec3 baseColor, bool isSky) {
 
 // ---------------------------------------------------------------------
 // Night atmospheric fog - a light, noise-driven ground haze visible at
-// night, independent of the regular distance fog (applyFog in
-// common.glsl, which is a flat exponential curve with no spatial
-// variation). Real moonlit mist isn't a uniform tint over distance -
-// it drifts in patches and sits thickest near the ground - so this
-// samples a slow-moving noise field for density rather than a pure
-// function of distance, and thins out with height above the ground.
-// Deliberately a cheap single-sample-per-pixel approximation (not a
-// real raymarch - the god-ray system already covers true volumetric
-// shafts) so it can run on every non-sky pixel without much cost.
+// night, independent of the regular distance fog.
+// ---------------------------------------------------------------------
 vec3 applyNightAtmosphericFog(vec3 color, vec3 worldPos, float dist, bool isSky) {
     if (isSky || NIGHT_FOG_STRENGTH <= 0.0) return color;
     float nightFactor = 1.0 - getDayFactor();
@@ -481,9 +417,6 @@ vec3 applyNightAtmosphericFog(vec3 color, vec3 worldPos, float dist, bool isSky)
     float mistNoise = cloudFBM(vec3(absoluteWorld.xz * 0.02 + drift, drift * 0.5));
 
     float density = (1.0 - exp(-dist * 0.012)) * mix(0.55, 1.0, mistNoise);
-    // Thicker near the ground, thinning with height above the camera -
-    // worldPos.y is camera-relative, so positive values are above eye
-    // level and negative are below.
     float heightFalloff = exp(-max(worldPos.y + 2.0, 0.0) * 0.05);
     density *= heightFalloff;
 
@@ -507,14 +440,6 @@ void main() {
 
     vec3 color = sceneColor.rgb;
 
-    // Cinematic rim/edge light: only at TRUE grazing angles (silhouette
-    // edges, distant horizon), not a smooth gradient across the whole
-    // view. The old continuous falloff produced visible concentric
-    // rings on flat ground - iso-angle contours are literally circles
-    // centered under the camera on a flat plane, and any smooth radial
-    // gradient like that will band once it hits 8-bit output. Gating it
-    // with smoothstep so most of an open ground plane gets exactly zero
-    // contribution fixes this at the source.
     if (depth < 0.9999) {
         vec3 viewLightDir = normalize(shadowLightPosition);
         vec3 viewDirToCam = normalize(-viewPos);
@@ -525,11 +450,6 @@ void main() {
     }
 
 #if SSAO == 1
-    // Applied to the already-lit color rather than isolated to just the
-    // ambient term (deferred shading has already combined everything
-    // into one buffer by this point) - the common simplified approach
-    // most lightweight shaderpacks use, and cheap enough to run every
-    // frame at full resolution.
     if (depth < 0.9999) {
 #if VOXY_COMPAT == 1
         float distFade = 1.0 - smoothstep(96.0, 128.0, dist);
@@ -544,17 +464,6 @@ void main() {
 #endif
 
 #if SHADOW_MODE != 0
-    // Extra close-range contact-shadow detail on top of the regular
-    // shadow map - see screenSpaceSunShadow in common.glsl. Only tested
-    // on opaque, sky-exposed, sun-facing geometry: pointless (and
-    // expensive) to march toward the sun from a pixel already fully
-    // enclosed with no sky light, or from a surface angled away from
-    // the sun that shadowLightPosition's own NdotL would zero out
-    // anyway. Applied as a straight darkening multiply on the final
-    // shaded color - this pack shades forward (not deferred), so by the
-    // time composite.fsh runs there's no separate "direct light only"
-    // buffer left to selectively re-darken; multiplying the whole
-    // pixel is the same approximation SSAO right above already uses.
     if (depth < 0.9999) {
 #if VOXY_COMPAT == 1
         float ssrtDistFade = 1.0 - smoothstep(96.0, 128.0, dist);
@@ -576,61 +485,18 @@ void main() {
 #endif
 
 #if WET_REFLECTIONS == 1
-    // Only on opaque ground that isn't already covered by water/glass -
-    // comparing depthtex0 (frontmost surface at this pixel, includes
-    // translucents) against depthtex1 (opaque only) detects that: if
-    // something translucent were in front, depthtex0 would read a
-    // nearer depth than depthtex1 at the same pixel.
-    // BUGFIX: nothing here excluded lava (or any other emissive block).
-    // A lava lake's surface is flat, upward-facing, and very often
-    // sky-exposed, so it was passing every gate below and getting
-    // puddle reflections of the surrounding scene painted onto it in
-    // the same blobby, noise-shaped patches real puddles use - the
-    // reported "colored circular glitches" on lava. colortex1's alpha
-    // already carries the `emissive` flag set in gbuffers_terrain.fsh
-    // (true for lava, torches, glowstone, etc.), so excluding anything
-    // emissive here is both the fix and the physically sensible
-    // behavior - a glowing/molten surface shouldn't show puddle
-    // reflections regardless of how flat or exposed it is.
     bool isEmissiveSurface = normalSample.a > 0.5;
     if (depth < 0.9999 && wetness > 0.01 && !isEmissiveSurface) {
         float opaqueDepth = texture2D(depthtex1, texcoord).r;
         if (abs(depth - opaqueDepth) < 0.0005) {
             vec3 worldNormalDir = normalize((gbufferModelViewInverse * vec4(viewNormal, 0.0)).xyz);
             if (worldNormalDir.y > 0.8) {
-                // BUGFIX: `wetness` is a single global scalar Iris ramps up
-                // during rain - it has no idea whether THIS particular
-                // fragment can actually see the sky, so ground under a roof
-                // was getting puddle reflections exactly like open ground
-                // outside. skyLight (packed into colortex3's alpha by
-                // gbuffers_terrain/entities - see the note there) tells us
-                // per-pixel sky exposure; smoothstep instead of a hard cutoff
-                // so the wet patch fades out gradually near a roof's edge
-                // rather than popping off at a sharp line.
                 float skyLight = texture2D(colortex3, texcoord).a;
-                // BUGFIX: this was smoothstep(0.6, 0.95, skyLight) - tuned
-                // against open desert/beach testing with zero canopy
-                // overhead, where skyLight sits near 1.0 almost everywhere.
-                // Under even scattered tree cover (a flower forest still
-                // has oak trees, just sparser than a dense forest), skyLight
-                // routinely dips well under 0.6 in the dappled shade around
-                // trunks/canopy, which killed the effect almost everywhere
-                // except direct clearings. Lowered so it starts picking up
-                // in that dappled range instead of requiring near-fully-open
-                // sky - it should still correctly stay off indoors/under a
-                // solid roof, since that reads much closer to 0.0-0.2.
                 float skyExposure = smoothstep(0.3, 0.75, skyLight);
 
-                // Patchy puddle mask rather than uniformly wetting every
-                // flat surface - real puddles pool unevenly across open
-                // ground instead of forming one perfectly even sheet.
                 vec2 puddleCoord = worldPos.xz + cameraPosition.xz;
                 float puddleMask = valueNoise3D(vec3(puddleCoord * 0.15, 0.0));
                 puddleMask = smoothstep(0.35, 0.7, puddleMask);
-                // OPTIMIZATION: folding skyExposure in here means sheltered
-                // ground now fails the `wetFactor > 0.01` check below and
-                // skips the expensive wetSSR() screen-space raymarch
-                // entirely, instead of running it and discarding the result.
                 float wetFactor = wetness * puddleMask * skyExposure * WET_REFLECTIONS_STRENGTH;
 
                 if (wetFactor > 0.01) {
@@ -649,10 +515,11 @@ void main() {
     }
 #endif
 
-    // Skip god rays on the sky itself (depth == 1.0 means nothing was
-    // drawn there) by capping march distance instead of branching hard,
-    // so the effect still catches mountains silhouetted against the sun.
-    bool isSky = depth >= 0.9999;
+    // BUGFIX: Use opaque depth (depthtex1) to evaluate isSky instead of depthtex0,
+    // because sun/moon geometry drawn in sky passes writes to depthtex0 (depth ~0.999),
+    // which caused a sharp rectangular boundary discontinuity around the sun/moon disc.
+    float opaqueDepthSample = texture2D(depthtex1, texcoord).r;
+    bool isSky = opaqueDepthSample >= 0.9999;
     float marchDist = isSky ? SHADOW_DISTANCE * 0.9 : dist;
 
     color = computeVolumetricClouds(normalize(worldPos), color, isSky);

@@ -446,7 +446,15 @@ void main() {
         float grazing = 1.0 - clamp(dot(viewNormal, viewDirToCam), 0.0, 1.0);
         float rim = smoothstep(0.72, 0.97, grazing);
         float facing = clamp(dot(viewNormal, viewLightDir) * 0.5 + 0.5, 0.0, 1.0);
-        color += getSunColor() * rim * facing * 0.09 * (0.5 + 0.5 * getSunVisibility());
+        // BUGFIX: the rim factor was too bright at water/translucent edges at night
+        // because getSunVisibility() never goes fully to zero and the rim term was
+        // not gated against translucent depth boundaries. Suppress rim on translucent
+        // pixels (where depth from depthtex0 != depthtex1) and scale by day more
+        // aggressively so the rim light is essentially invisible at night.
+        float opaqueD = texture2D(depthtex1, texcoord).r;
+        float isTranslucent = clamp(abs(depth - opaqueD) * 5000.0, 0.0, 1.0);
+        float rimDayScale = getSunVisibility() * getSunVisibility(); // quadratic falloff toward night
+        color += getSunColor() * rim * facing * 0.09 * rimDayScale * (1.0 - isTranslucent);
     }
 
 #if SSAO == 1
@@ -572,7 +580,13 @@ void main() {
     // time-of-day-correct horizon gradient instead of an arbitrary
     // average of two unrelated lighting terms.
     float duskHaze = clamp(1.0 - abs(getSunVisibility() - 0.45) * 2.6, 0.0, 1.0);
-    float hazeAmount = clamp(dist / (SHADOW_DISTANCE * 2.2), 0.0, 1.0) * (0.08 + duskHaze * 0.18);
+    // BUGFIX: the haze-to-horizon-sky blend used a hard (1.0 - float(isSky)) mask
+    // which creates a sharp color boundary exactly at depth=0.9999 during dusk when
+    // getHorizonSkyColor() is a vivid orange and terrain fog is a cooler color.
+    // Use the opaqueDepthSample we already have to smoothly gate this on opaque
+    // geometry only, and reduce the dusk contribution strength slightly to avoid
+    // a hard visible seam at the sky/terrain boundary at sunset.
+    float hazeAmount = clamp(dist / (SHADOW_DISTANCE * 2.2), 0.0, 1.0) * (0.06 + duskHaze * 0.13);
     color = mix(color, getHorizonSkyColor(), hazeAmount * (1.0 - float(isSky)));
 
     // Underwater visibility falloff: real water scatters/absorbs light

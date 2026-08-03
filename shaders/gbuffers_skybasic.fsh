@@ -71,8 +71,14 @@ void main() {
     zenith  = mix(zenith, zenithDusk, dusk * (1.0 - day * 0.5));
     horizonC= mix(horizonC, horizonDusk, dusk * (1.0 - day * 0.4));
 
-    vec3 sky = mix(zenith, horizonC, pow(horizon, 1.4));
-    sky = mix(sky, fogColor, 0.12 * horizon);
+    vec3 sky = mix(zenith, horizonC, pow(horizon, 1.6));
+    // BUGFIX: blending toward vanilla's fogColor near the horizon during sunset
+    // produced a visible bright/white band because fogColor is a flat, time-of-day-
+    // unaware biome value - it has no knowledge of the vivid orange dusk palette
+    // this shader is drawing, so the two colors disagreed sharply at the seam.
+    // Blend toward horizonC itself (which IS dusk-aware) scaled by a small factor
+    // so the horizon stays naturally hazy without any color discontinuity.
+    sky = mix(sky, horizonC * 1.05, 0.06 * smoothstep(0.0, 0.18, horizon));
     sky *= mix(1.0, 0.45, rainStrength);
 
     // Stars fade in at night, fade out near horizon and during day.

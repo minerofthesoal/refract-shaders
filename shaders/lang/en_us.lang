@@ -1,0 +1,219 @@
+## Refract Shaders - shader options screen translations
+## Standard OptiFine/Iris shader-options .lang format: gives every
+## submenu and #define setting a human-readable name + tooltip in the
+## in-game shader options screen instead of the raw macro name.
+
+# ---------------------------------------------------------------------
+# Submenu categories
+# ---------------------------------------------------------------------
+screen.SHADOWS=Shadows
+screen.AMBIENT_OCCLUSION=Ambient Occlusion
+screen.LIGHTING=Lighting & Bloom
+screen.SKY=Sky & Clouds
+screen.WATER=Water
+screen.WEATHER=Weather
+screen.NIGHT=Night
+screen.ATMOSPHERE=Atmosphere & Life
+screen.COLOR_GRADE=Color Grading
+
+# ---------------------------------------------------------------------
+# Shadows
+# ---------------------------------------------------------------------
+option.SHADOW_RES=Shadow Resolution
+option.SHADOW_RES.comment=Resolution of the sun/moon shadow map. Higher = sharper, more defined shadow edges at a VRAM/performance cost.
+
+option.SHADOW_DISTANCE=Shadow Distance
+option.SHADOW_DISTANCE.comment=How far from the camera shadows are drawn, in blocks. Shadows fade back to fully-lit as they approach this distance instead of popping off abruptly.
+
+option.SOFT_SHADOWS=Soft Shadows
+option.SOFT_SHADOWS.comment=Enables filtered, contact-hardening soft shadow edges. Off falls back to a single hard-edged sample per pixel (cheaper, blockier).
+value.SOFT_SHADOWS.0=Off (Hard Edges)
+value.SOFT_SHADOWS.1=On (Soft Edges)
+
+option.SHADOW_SOFTNESS=Shadow Softness
+option.SHADOW_SOFTNESS.comment=How much softer shadow edges get the further they are from whatever is casting them, like real penumbrae. Also affects how soft colored light through glass looks.
+
+option.COLORED_GLASS_STRENGTH=Colored Glass Strength
+option.COLORED_GLASS_STRENGTH.comment=Strength of the tinted light cast through stained glass, leaves, and ice. 0 disables colored shadows entirely.
+
+option.GLASS_BLEED_STRENGTH=Glass Light Bleed
+option.GLASS_BLEED_STRENGTH.comment=How far colored light from a stained-glass window spills onto nearby surfaces beyond its own sharp shadow silhouette, like real scattered light through a window. 0 keeps colored light confined to the exact shadow shape.
+
+option.GLASS_SKYLIGHT_STRENGTH=Glass Skylight Shadow
+option.GLASS_SKYLIGHT_STRENGTH.comment=How much glass, leaves, and ice dim direct sunlight passing through them instead of only recoloring it - real stained glass blocks a real fraction of the light outright. 0 makes glass recolor light without dimming it at all.
+
+option.GLASS_BLEED_DYNAMIC_SPREAD=Dynamic Glass Bleed Spread
+option.GLASS_BLEED_DYNAMIC_SPREAD.comment=Widens the colored-glass bleed radius near sunrise/sunset, like real low-angle light scattering further across a room. Off keeps the bleed radius constant at all times of day.
+value.GLASS_BLEED_DYNAMIC_SPREAD.0=Off (constant)
+value.GLASS_BLEED_DYNAMIC_SPREAD.1=On (widens at dusk/dawn)
+
+option.GLASS_BLEED_DUSK_MULTIPLIER=Dusk Bleed Multiplier
+option.GLASS_BLEED_DUSK_MULTIPLIER.comment=How much wider the colored-glass bleed radius gets at peak sunrise/sunset, when Dynamic Glass Bleed Spread is on.
+
+option.FOLIAGE_SHADOW_STRENGTH=Foliage Canopy Shadow
+option.FOLIAGE_SHADOW_STRENGTH.comment=How much a leaf canopy actually darkens (not just tints) direct/ambient light passing through it. Low values leave forests/jungles reading flat and overlit despite a visible canopy overhead.
+
+# ---------------------------------------------------------------------
+# Ambient Occlusion
+# ---------------------------------------------------------------------
+option.SSAO=Ambient Occlusion
+option.SSAO.comment=Adds soft contact darkening in corners, creases, and where objects meet - detail a single directional shadow map can't produce on its own.
+value.SSAO.0=Off
+value.SSAO.1=On
+
+option.SSAO_STRENGTH=AO Strength
+option.SSAO_STRENGTH.comment=How dark the ambient occlusion effect gets. 0 is invisible even with AO enabled; 1 is a strong, pronounced darkening.
+
+option.SSAO_SAMPLES=AO Quality
+option.SSAO_SAMPLES.comment=Number of samples used per pixel for ambient occlusion. Higher looks smoother/less noisy but costs more performance.
+
+# ---------------------------------------------------------------------
+# Lighting & Bloom
+# ---------------------------------------------------------------------
+option.GODRAY_STRENGTH=God Ray Strength
+option.GODRAY_STRENGTH.comment=Intensity of volumetric sunlight/moonlight shafts and the glare disc around the sun/moon. 0 disables both.
+
+option.GODRAY_STEPS=God Ray Quality
+option.GODRAY_STEPS.comment=Raymarch step count for volumetric god rays. Higher looks smoother but costs more performance.
+
+option.BLOOM_STRENGTH=Bloom Strength
+option.BLOOM_STRENGTH.comment=Overall intensity of the glow around bright highlights (sun, lava, glowstone, water sparkle, etc). 0 disables bloom.
+
+option.BLOOM_THRESHOLD=Bloom Threshold
+option.BLOOM_THRESHOLD.comment=How bright something needs to be before it starts blooming. Higher keeps bloom tight around only the brightest highlights instead of spreading into a big soft blob.
+
+# ---------------------------------------------------------------------
+# Sky & Clouds
+# ---------------------------------------------------------------------
+option.CLOUD_STEPS=Cloud Quality
+option.CLOUD_STEPS.comment=Raymarch step count for the volumetric clouds. Higher looks smoother and more detailed but costs more performance.
+
+option.CLOUD_COVERAGE=Cloud Coverage
+option.CLOUD_COVERAGE.comment=How much of the sky is covered by clouds. Lower values mean cloudier skies.
+
+option.CLOUD_OPACITY=Cloud Opacity
+option.CLOUD_OPACITY.comment=Maximum opacity clouds can reach. Lower makes clouds thinner/more see-through even at full coverage.
+
+option.FOG_DENSITY=Fog Density
+option.FOG_DENSITY.comment=Multiplier on atmospheric fog thickness, both the close-range haze and the render-distance edge fade.
+
+# ---------------------------------------------------------------------
+# Water
+# ---------------------------------------------------------------------
+option.WATER_WAVE_HEIGHT=Wave Height
+option.WATER_WAVE_HEIGHT.comment=Amplitude of the actual vertex-level water swell, in blocks. 0 leaves the water surface completely flat.
+
+option.WATER_CLARITY=Water Clarity
+option.WATER_CLARITY.comment=How far light penetrates before water reaches its full depth tint. Higher keeps water looking clear for longer, showing more seabed detail through shallow-to-mid water.
+
+option.WATER_REFLECTION_STRENGTH=Reflection Strength
+option.WATER_REFLECTION_STRENGTH.comment=How mirror-like water gets at grazing viewing angles. Higher pushes water toward a fuller mirror; lower keeps it more matte.
+
+option.WATER_FOAM_STRENGTH=Foam Strength
+option.WATER_FOAM_STRENGTH.comment=Visibility of the shoreline foam band where water meets shallow ground. 0 removes foam entirely.
+
+option.WATER_GLINT_STRENGTH=Sun Glint Strength
+option.WATER_GLINT_STRENGTH.comment=Intensity of the sun/moon specular highlight and sparkle/glitter on water. Lower this if the highlight blooms into one big soft glow instead of a tight sparkle.
+
+option.CAUSTICS_STRENGTH=Caustics Strength
+option.CAUSTICS_STRENGTH.comment=Intensity of the dancing light patterns under shallow water and the full-screen shimmer while swimming. 0 disables caustics entirely.
+
+option.UNDERWATER_DISTORTION=Underwater Distortion
+option.UNDERWATER_DISTORTION.comment=How strongly the screen visually warps while your camera is submerged. 0 disables the distortion but keeps the color tint/caustics.
+
+option.UNDERWATER_GODRAYS_STRENGTH=Underwater Light Shafts
+option.UNDERWATER_GODRAYS_STRENGTH.comment=Extra volumetric light shafts piercing down through the water surface, visible while swimming or looking up from underwater.
+
+option.SWAMP_MURKINESS=Swamp Water Murkiness
+option.SWAMP_MURKINESS.comment=How opaque/dark swamp water reads compared to this pack's usual crystal-clear look. Real swamp water is shallow and algae-thick, and shouldn't show a clean sandy bottom.
+
+option.OCEAN_TEMPERATURE_TINT=Ocean Temperature Tint
+option.OCEAN_TEMPERATURE_TINT.comment=Extra warm-tropical / icy-pale push on ocean water beyond vanilla's own per-biome water color, so warm, lukewarm, cold, and frozen oceans read more distinctly from each other.
+
+option.CHROMATIC_DISPERSION_STRENGTH=Chromatic Dispersion
+option.CHROMATIC_DISPERSION_STRENGTH.comment=Subtle prismatic/rainbow fringing on water reflections at grazing angles, evoking real dispersion through a refractive surface. 0 keeps reflections perfectly neutral-colored.
+
+# ---------------------------------------------------------------------
+# Weather
+# ---------------------------------------------------------------------
+option.WET_REFLECTIONS=Wet Ground Reflections
+option.WET_REFLECTIONS.comment=Puddle-like screen-space reflections on flat, upward-facing ground while it's raining.
+value.WET_REFLECTIONS.0=Off
+value.WET_REFLECTIONS.1=On
+
+option.WET_REFLECTIONS_STRENGTH=Wet Reflection Strength
+option.WET_REFLECTIONS_STRENGTH.comment=Intensity of puddle reflections on wet ground. Has no effect if Wet Ground Reflections is off.
+
+option.CLOUD_SHADOW_STRENGTH=Cloud Shadow Strength
+option.CLOUD_SHADOW_STRENGTH.comment=How much clouds dim direct sunlight on the ground beneath them as they drift overhead. 0 disables cloud shadows.
+
+option.RAIN_RIPPLE_STRENGTH=Rain Ripple Strength
+option.RAIN_RIPPLE_STRENGTH.comment=Intensity of the animated concentric ripples that appear on water surfaces while it's raining. 0 disables rain ripples.
+
+# ---------------------------------------------------------------------
+# Night
+# ---------------------------------------------------------------------
+option.NIGHT_DARKNESS=Night Darkness
+option.NIGHT_DARKNESS.comment=Base darkness level at night. 0 is close to vanilla brightness, 1 is properly dark, 2 is very dark.
+value.NIGHT_DARKNESS.0=Vanilla-ish
+value.NIGHT_DARKNESS.1=Dark
+value.NIGHT_DARKNESS.2=Very Dark
+
+option.TRUE_BLACK_NIGHTS=True Black Nights
+option.TRUE_BLACK_NIGHTS.comment=Opt-in extra darkness: pushes night ambient much lower and removes the enclosed-room light floor, so you genuinely need a light source to see. Off by default keeps a normal moonlit night.
+value.TRUE_BLACK_NIGHTS.0=Off
+value.TRUE_BLACK_NIGHTS.1=On
+
+option.NIGHT_BRIGHTNESS=Night Brightness
+option.NIGHT_BRIGHTNESS.comment=Extra multiplier applied on top of Night Darkness / True Black Nights - turn this up if night is too dark to see by even at low darkness settings.
+
+# ---------------------------------------------------------------------
+# Atmosphere & life
+# ---------------------------------------------------------------------
+option.NIGHT_CLOUD_GLOW=Night Cloud Glow
+option.NIGHT_CLOUD_GLOW.comment=Moonlit rim-light and silver sheen on cloud undersides/edges at night, instead of clouds going nearly invisible after dusk.
+
+option.FIREFLIES=Fireflies
+option.FIREFLIES.comment=Drifting glowing insects over grass and foliage in forest, jungle, and swamp biomes at night.
+value.FIREFLIES.0=Off
+value.FIREFLIES.1=On
+
+option.FIREFLY_STRENGTH=Firefly Brightness
+option.FIREFLY_STRENGTH.comment=Brightness/visibility of fireflies when enabled.
+
+option.AURORA=Aurora Borealis
+option.AURORA.comment=Drifting aurora ribbons in the night sky over cold biomes (taiga, icy peaks, snowy plains, frozen coastlines).
+value.AURORA.0=Off
+value.AURORA.1=On
+
+option.AURORA_STRENGTH=Aurora Brightness
+option.AURORA_STRENGTH.comment=Brightness of the aurora when enabled.
+
+option.SNOW_SPARKLE_STRENGTH=Snow & Ice Sparkle
+option.SNOW_SPARKLE_STRENGTH.comment=Sun/moon glitter on snow and ice, like light catching individual ice crystal facets as you move.
+
+option.FOLIAGE_BACKLIGHT_STRENGTH=Foliage Backlight
+option.FOLIAGE_BACKLIGHT_STRENGTH.comment=Subsurface-style glow on thin leaves/grass when the sun is behind them, instead of foliage only ever reading as a flat-lit front face.
+
+option.NIGHT_FOG_STRENGTH=Night Atmospheric Fog
+option.NIGHT_FOG_STRENGTH.comment=Light, drifting ground haze at night, like real mist catching moonlight - separate from the regular distance fog, and thickest close to the ground.
+
+option.VOXY_COMPAT=Voxy LoD Compatibility
+option.VOXY_COMPAT.comment=Fades out close-range-only effects (ambient occlusion, contact shadows) smoothly past 96-128 blocks instead of skipping them all at once - meaningless detail at LoD-scale distance either way. Turn off to match this pack's exact behavior from before Voxy support was added.
+value.VOXY_COMPAT.0=Off
+value.VOXY_COMPAT.1=On
+
+# ---------------------------------------------------------------------
+# Color Grading
+# ---------------------------------------------------------------------
+option.EXPOSURE=Exposure
+option.EXPOSURE.comment=Manual brightness multiplier applied before tonemapping.
+
+option.SATURATION=Saturation
+option.SATURATION.comment=Final color saturation. 1.0 is neutral; higher is more vivid, lower is closer to grayscale.
+
+option.WARMTH=Warmth
+option.WARMTH.comment=Subtle warm/cool color push applied through the day/night cycle and between shadows and highlights.
+
+option.VIGNETTE_STRENGTH=Vignette Strength
+option.VIGNETTE_STRENGTH.comment=Darkening toward the edges of the screen. 0 disables the vignette. Automatically stronger while underwater.

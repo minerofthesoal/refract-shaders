@@ -23,7 +23,7 @@ jobs:
           echo "zip_name=${ZIP_NAME}" >> $GITHUB_OUTPUT
 
       - name: Publish to Modrinth
-        uses: Modrinth/minotaur@v2
+        uses: Modrinth/minotaur@v1
         with:
           token: ${{ secrets.MODRINTH_TOKEN }}
           project_id: refract-shaders

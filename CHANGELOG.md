@@ -6,10 +6,64 @@ engine (still v17-derived), new name because it's grown well past what
 features - light refracting/bending through water and through colored
 glass - are what it's actually built around now.
 
+## v22.3.0: Nether & End dimension shaders, Modrinth publish fixes
+
+### Added
+- **Nether dimension shaders** (`shaders/world-1/`): a dedicated `composite.fsh`
+  for the Nether. Drops the overworld's godrays/sun-glare, volumetric clouds,
+  and wet-reflection puddles (none of that makes sense without a visible sun
+  or rain), adds a low warm ember ambient floor so fully unlit caverns read
+  as dim glow instead of crushed black, and adds a lava-vision effect
+  (heat-shimmer + tint) for `isEyeInWater == 2` - nothing in the pack handled
+  the camera being submerged in lava before.
+- **End dimension shaders** (`shaders/world1/`): a dedicated `composite.fsh`
+  for the End. Drops overworld clouds (vanilla never spawns clouds there,
+  and the pack's cloud code would otherwise draw them straight over the
+  void through the open sky above the islands) and rain-dependent effects,
+  keeps a re-tinted volumetric light shaft using the End's fixed
+  (non-day/night-cycling) light direction for a stable beam-through-the-void
+  look, and adds a constant violet void-mist ground haze.
+- **Biome-aware ambient/horizon/sun colors** (`lib/common.glsl`):
+  `getAmbientSkyColor()`, `getHorizonSkyColor()`, and `getSunColor()` now
+  branch on the existing `biome_category` uniform (`CAT_NETHER`,
+  `CAT_THE_END`) instead of always running through the overworld day/night
+  mix. `worldTime` keeps advancing in the background even in dimensions with
+  no visible sun, so without this, terrain/water ambient and the composite
+  horizon-haze blend would slowly cycle through overworld colors that have
+  nothing to do with what's on screen - most visible in the End, where
+  `has_skylight = true` means that ambient term isn't zeroed out by a lack of
+  sky light the way it incidentally is in the Nether.
+- **`package.sh`**: zips `shaders/` and `CHANGELOG.md` with `shaders/` at the
+  root of the archive, for manual uploads to Modrinth/CurseForge or dropping
+  straight into `.minecraft/shaderpacks/`.
+
+### Fixed
+- **Modrinth publish workflow failing on every run:** the JSON metadata sent
+  to `POST /v2/version` was missing the `dependencies` field. It's required
+  by the v2 API's `CreatableVersion` schema even when empty - Modrinth can't
+  tell "no dependencies" from "field never sent" - so every publish attempt
+  was rejected with `400 invalid_input`. Also added a `User-Agent` header
+  (required per Modrinth's API docs) and made the step print the actual
+  response body and HTTP status on failure instead of just failing silently.
+- **"No Iris/OptiFine shader folder found" on manual Modrinth upload:** this
+  wasn't a Modrinth-side bug - it's caused by zipping the repo folder itself
+  (or using GitHub's Code -> Download ZIP button, which wraps everything in
+  a `refract-shaders-main/` folder) instead of zipping `shaders/` at the
+  archive root. Modrinth looks for `shaders/` directly inside the zip; a
+  wrapping folder hides it. `package.sh` (above) produces a correctly
+  structured zip every time. The CI workflow's own zip step was already
+  structured correctly (`actions/checkout@v4` checks out to the job's
+  working-directory root, not a nested folder), so this only ever affected
+  manual uploads.
+- Corrected a changelog inaccuracy from v22.2.18 below: the Modrinth publish
+  step has always been a hand-rolled `curl` call against the v2 API, not the
+  `Modrinth/minotaur@v2` GitHub Action.
+
 ## v22.2.18: GitHub Modrinth Publishing, Vulkan/VulkanMod compatibility, Sun Box Fix, Better Clouds & Shadows
 
 ### Added
-- **GitHub Action workflow for publishing to Modrinth** (`.github/workflows/publish-modrinth.yml`): Automatically packages the shader pack `.zip` and uploads release versions to Modrinth on git tag push (`v*`) or manual workflow dispatch using `Modrinth/minotaur@v2`.
+- **GitHub Action workflow for publishing to Modrinth** (`.github/workflows/publish-modrinth.yml`): Automatically packages the shader pack `.zip` and uploads release versions to Modrinth on git tag push (`v*`) or manual workflow dispatch.
+
 
 ### Fixed
 - **Sun Quad White Box Artifact:** Fixed a bug where `depthtex0` depth values recorded from the sun quad geometry caused `isSky` to evaluate to `false` specifically over the sun quad area, creating a sharp square boundary in volumetric cloud masking, atmospheric fog, and sun glare. `isSky` now samples `depthtex1` (the opaque-only depth buffer) which correctly classifies open sky and sun/moon quads uniformly.

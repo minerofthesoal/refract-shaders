@@ -5,7 +5,7 @@
 #ifndef GL_ARB_shader_texture_lod
 #define texture2DLod(tex, uv, lod) texture2D(tex, uv)
 #endif
-/* Refract Shaders v22.2.18 - composite2.fsh
+/* Refract Shaders v22.3.0 - composite2.fsh
    Combines several mip levels of the bright-pass buffer (colortex2) to
    approximate a soft multi-radius gaussian bloom, then adds it back
    onto the HDR scene color in colortex0. */

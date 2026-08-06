@@ -17,17 +17,25 @@ jobs:
       - name: Package shader pack
         id: package
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          # Zip the CONTENTS of the repo (shaders/ at the zip root), never
+          # the repo checkout folder itself - Modrinth/Iris/OptiFine look
+          # for a top-level "shaders" directory. actions/checkout@v4 already
+          # checks out to the job's working directory root (no wrapping
+          # folder), so this produces the right layout automatically.
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"                    # "v22.3.0" -> "22.3.0" for version_number
           ZIP_NAME="refract-shaders-${VERSION}.zip"
           zip -r "${ZIP_NAME}" shaders CHANGELOG.md
-          echo "zip_name=${ZIP_NAME}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Publish to Modrinth via API
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
           ZIP_NAME: ${{ steps.package.outputs.zip_name }}
           VERSION: ${{ steps.package.outputs.version }}
+          TAG: ${{ steps.package.outputs.tag }}
         run: |
           # Build JSON metadata safely using python to avoid shell/JSON escaping issues
           python3 - <<'EOF'
@@ -35,10 +43,11 @@ jobs:
 
           changelog = open("CHANGELOG.md").read()[:4000]
           version = os.environ["VERSION"]
+          tag = os.environ["TAG"]
 
           metadata = {
             "project_id": "refract-shaders",
-            "name": f"Refract Shaders {version}",
+            "name": f"Refract Shaders {tag}",
             "version_number": version,
             "changelog": changelog,
             "version_type": "release",
@@ -49,14 +58,33 @@ jobs:
               "1.21","1.21.1"
             ],
             "featured": True,
-            "file_parts": ["file"]
+            "file_parts": ["file"],
+            # REQUIRED by the v2 API's CreatableVersion schema even when
+            # empty - omitting this key entirely (as before) makes every
+            # request fail with 400 invalid_input, since Modrinth can't
+            # tell "no dependencies" from "field never sent".
+            "dependencies": []
           }
 
           with open("modrinth_metadata.json", "w") as f:
             json.dump(metadata, f)
           EOF
 
-          curl --fail -X POST "https://api.modrinth.com/v2/version" \
+          # -w prints the HTTP status after the body so a failure is
+          # actually diagnosable in the Action log instead of just
+          # "curl: (22) The requested URL returned error: 400".
+          http_status=$(curl -sS -X POST "https://api.modrinth.com/v2/version" \
             -H "Authorization: ${MODRINTH_TOKEN}" \
+            -H "User-Agent: ray0rf1re/refract-shaders/${VERSION} (github-actions)" \
             -F "data=@modrinth_metadata.json;type=application/json" \
-            -F "file=@${ZIP_NAME};type=application/zip"
+            -F "file=@${ZIP_NAME};type=application/zip" \
+            -o response.json -w "%{http_code}")
+
+          echo "Modrinth API response (HTTP ${http_status}):"
+          cat response.json
+          echo
+
+          if [ "${http_status}" -lt 200 ] || [ "${http_status}" -ge 300 ]; then
+            echo "::error::Modrinth publish failed with HTTP ${http_status}"
+            exit 1
+          fi

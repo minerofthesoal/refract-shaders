@@ -558,6 +558,17 @@ float getDuskDawnFactor() {
 }
 
 vec3 getSunColor() {
+    // The End has no visible sun/moon, but Iris still hands us a fixed,
+    // non-cycling shadowLightPosition there (unlike the Nether, where
+    // skyLight is always 0 so this color never actually reaches a
+    // fragment - see getAmbientSkyColor below). Returning a constant
+    // pale "starlight" tone instead of running it through the overworld
+    // day/night mix keeps direct lighting stable and correctly colored
+    // instead of quietly cycling through gold/blue on the overworld's
+    // clock, which keeps ticking in the background even though nothing
+    // in the End's sky ever shows it.
+    if (biome_category == CAT_THE_END) return vec3(0.55, 0.48, 0.68);
+
     float day   = getDayFactor();
     float dusk  = clamp(1.0 - abs(getSunVisibility() - 0.45) * 2.6, 0.0, 1.0);
     vec3 noonColor   = vec3(1.12, 1.03, 0.88);
@@ -569,6 +580,19 @@ vec3 getSunColor() {
 }
 
 vec3 getAmbientSkyColor() {
+    // Nether/End dimension overrides - see /world-1 and /world1. Neither
+    // dimension has a real day/night cycle (worldTime keeps advancing in
+    // the background regardless), so mixing toward dayAmbient/nightAmbient
+    // below would slowly cycle Nether/End ambient through overworld colors
+    // that have nothing to do with what's on screen. The Nether additionally
+    // has has_skylight=false, meaning every terrain/water fragment's skyLight
+    // (lmcoord.y) reads 0 - callers multiply this return value by skyLight,
+    // so the flat ember tone below only ever shows up through the small
+    // ambient floor added explicitly in /world-1/composite.fsh, never as a
+    // stray tint on lit terrain.
+    if (biome_category == CAT_THE_END)  return vec3(0.075, 0.060, 0.105);
+    if (biome_category == CAT_NETHER)   return vec3(0.085, 0.032, 0.018);
+
     float day = getDayFactor();
     vec3 dayAmbient = vec3(0.62, 0.74, 0.92);
 
@@ -620,6 +644,12 @@ vec3 getAmbientSkyColor() {
 // terrain below.
 // ---------------------------------------------------------------------
 vec3 getHorizonSkyColor() {
+    // Same reasoning as getAmbientSkyColor above - fixed, dimension-
+    // appropriate tones instead of an overworld day/night gradient that
+    // has no visible sun/moon to justify it in either dimension.
+    if (biome_category == CAT_THE_END)  return vec3(0.035, 0.020, 0.060);
+    if (biome_category == CAT_NETHER)   return vec3(0.300, 0.090, 0.040);
+
     float day = getDayFactor();
     float dusk = clamp(1.0 - abs(getSunVisibility() - 0.45) * 2.6, 0.0, 1.0);
 
